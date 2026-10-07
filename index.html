@@ -137,18 +137,18 @@ function scene(){clr();const m=G("mo");if(!m)return;
   at(10100,()=>m.classList.remove("grab","eat","chew","yum"));at(11700,()=>m.classList.add("fade"));at(12300,()=>{m.className="m fade"});at(12500,()=>{m.className="m"});at(12600,run)};
  run()}
 async function draw(){const e=G("lock"),first=!ls("lk"),ru=ls("lu"),bio=!first&&!!ls("bio")&&await bioOk();e.classList.remove("off");
- e.innerHTML=`<div class="lc"><img src="${document.querySelector(".ic").src}" alt=""><h2 class="f">cookies &amp; house</h2>${first?'<p class="mu">Primera vez: crea tu PIN de 4 dígitos.</p>':""}
+ e.innerHTML=`<div class="lc"><img src="${document.querySelector(".ic").src}" alt=""><h2 class="f">cookies &amp; house</h2>${first?'<p class="mu">Primera vez en este móvil: escribe el usuario y crea un PIN de 4 dígitos. Solo te lo pediré esta vez.</p>':""}
 ${ru?`<p class="mu">Usuario: ${ru}</p><input id="lu" type="hidden" value="${ru}">`:`<input id="lu" type="text" autocomplete="username" autocapitalize="off" placeholder="Usuario">`}
 <input id="lp" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="${first?"new-password":"current-password"}" placeholder="PIN" aria-label="PIN de 4 dígitos">
 ${first?'<input id="lp2" class="pin" type="password" inputmode="numeric" maxlength="4" placeholder="Repite el PIN" aria-label="Repite el PIN">':""}
-<label class="rm"><input id="lr" type="checkbox" checked> Mantener la sesión iniciada en este móvil</label><div class="er" id="le" role="alert"></div>
+<div class="er" id="le" role="alert"></div>
 <button class="b" id="lg">${first?"Crear PIN y entrar":"Entrar"}</button>${bio?'<button class="b s" id="lb">Entrar con huella / Face ID</button>':""}${first?"":'<button class="x" id="lx" style="font-size:13px">He olvidado el PIN</button><div id="lh" class="mu" role="status"></div>'}</div>${SCN}`;
  const E=m=>{G("le").textContent=m},P=G("lp");
  async function go(){const u=G("lu").value.trim(),p=P.value;
   if(!/^\d{4}$/.test(p)){E("El PIN son 4 números.");return}
   if(first){if(u.toLowerCase()!==USER.toLowerCase()){E("Usuario incorrecto.");return}if(p!==G("lp2").value){E("Los PIN no coinciden.");return}await setPin(p)}
   else{const w=wait();if(w){E("Demasiados intentos. Espera "+w+" s.");return}if(u.toLowerCase()!==USER.toLowerCase()||!await okPin(p)){fail();E("Usuario o PIN incorrecto.");P.value="";return}}
-  if(G("lr").checked){ls("lu",USER);ls("ks","1")}else{ls("lu",null);ls("ks",null)}unlock()}
+  ls("lu",USER);ls("ks","1");unlock()}
  G("lg").onclick=go;P.oninput=()=>{P.value=P.value.replace(/\D/g,"");if(!first&&P.value.length===4)go()};
  if(G("lb"))G("lb").onclick=async()=>{try{await bioLogin();unlock()}catch(x){E("No se pudo verificar. Usa el PIN.")}};
  if(G("lx"))G("lx").onclick=()=>{const q=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])),d=ls("tdv"),a=ls("tal"),row=(n,v)=>v?`<div>${n}: <a href="tel:${v.replace(/[^\d+]/g,"")}">${q(v)}</a></div>`:"";
@@ -162,6 +162,7 @@ window.lkChange=()=>{const o=G("md");o.className="on";
  o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Cambiar PIN</div><input id="c0" class="pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN actual"><input id="c1" class="pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN nuevo"><input id="c2" class="pin" type="password" inputmode="numeric" maxlength="4" placeholder="Repite el nuevo"><div class="mu" id="ce"></div><button class="b" id="cg">Guardar</button><button class="b s" onclick="mclose()">Cancelar</button></div>`;
  G("cg").onclick=async()=>{const a=G("c0").value,b=G("c1").value,c=G("c2").value,m=G("ce");if(!await okPin(a)){m.textContent="El PIN actual no es correcto.";return}if(!/^\d{4}$/.test(b)||b!==c){m.textContent="El PIN nuevo debe tener 4 números y coincidir.";return}await setPin(b);mclose();say("PIN cambiado")}};
 document.addEventListener("visibilitychange",()=>{if(document.hidden)hiddenAt=Date.now();else if(unlocked&&!ls("ks")&&Date.now()-hiddenAt>120000)window.lkLock()});
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 if(ls("ks")&&ls("lk")){unlocked=true;G("lock").classList.add("off")}else draw();
 })();
