@@ -207,7 +207,22 @@ const mcp={callTool:async(server,tool,a)=>{const cid=LS("gc");if(!cid)throw err(
  u.search=new URLSearchParams({timeMin:a.startTime,timeMax:a.endTime,singleEvents:"true",orderBy:"startTime",maxResults:String(a.pageSize||30)});
  const r=await fetch(u,{headers:{Authorization:"Bearer "+t}});if(r.status===401){tok=null;throw err("auth")}if(!r.ok)throw err("api_"+r.status);
  const d=await r.json();return{payload:{summary:d.summary,events:d.items||[]},cache:{storedAt:Date.now()}}}};
-window.claude={use:async n=>{if(n==="sample")return sample;if(n==="mcp")return mcp;throw err("not_available")}};
+window.cloudState="off";
+const clean=o=>JSON.parse(JSON.stringify(o));
+let fsP=null;
+function fb(){if(fsP)return fsP;fsP=(async()=>{window.cloudState="connecting";
+ try{const cfg=JSON.parse(LS("fbc")),base="https://www.gstatic.com/firebasejs/10.12.2/";
+  const [A,F,U]=await Promise.all([import(base+"firebase-app.js"),import(base+"firebase-firestore.js"),import(base+"firebase-auth.js")]);
+  const app=A.initializeApp(cfg),auth=U.getAuth(app);
+  await U.signInWithEmailAndPassword(auth,LS("fbe"),LS("fbp"));
+  const db=F.initializeFirestore(app,{localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})});
+  window.cloudState="ok";return{F,db}}
+ catch(e){window.cloudState="error: "+(e.code||e.message||"desconocido");window.say&&window.say("Sincronización: "+window.cloudState);throw e}})();return fsP}
+const dbShim={collection:c=>({
+ doc:id=>({set:async o=>{const{F,db}=await fb();F.setDoc(F.doc(db,c,id),clean(o)).catch(e=>{window.cloudState="error: "+(e.code||"escritura")})},
+          delete:async()=>{const{F,db}=await fb();F.deleteDoc(F.doc(db,c,id)).catch(e=>{window.cloudState="error: "+(e.code||"borrado")})}}),
+ onSnapshot:cb=>{fb().then(({F,db})=>F.onSnapshot(F.collection(db,c),s=>cb({docs:s.docs.map(d=>({id:d.id,data:()=>d.data()}))}),e=>{window.cloudState="error: "+(e.code||"lectura");window.say&&window.say("Sincronización: "+window.cloudState)})).catch(()=>{})}})};
+window.claude={use:async n=>{if(n==="sample")return sample;if(n==="mcp")return mcp;if(n==="db"&&LS("fbc"))return dbShim;throw err("not_available")}};
 })();
 </script>
 <script>
@@ -434,16 +449,22 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{tab=b.dataset.
 render();
 (async()=>{if(!window.claude)return;try{sample=await claude.use("sample")}catch(e){}if(sample){try{const c=await sample.limits();capImg=c.images||false}catch(e){capImg=false}}
  try{db=await claude.use("db")}catch(e){}
- if(db)for(const c of ["menu","compra","recetas"])db.collection(c).onSnapshot(s=>{S[c]=s.docs.map(d=>({...d.data(),id:d.id}));render()});
+ if(db)for(const c of ["menu","compra","recetas","congelador"])db.collection(c).onSnapshot(s=>{S[c]=s.docs.map(d=>({...d.data(),id:d.id}));render()});
  render()})();
 
 function openSet(){const o=$("#md");o.className="on";o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Ajustes</div>
 <label class="mu">Clave de Gemini (Google AI Studio)</label><input id="sk" type="password" placeholder="AIza…" autocomplete="off" value="${esc(localStorage.getItem("gm")||"")}"><label class="mu">Modelo de Gemini (déjalo vacío para usar el predeterminado)</label><input id="gmo" placeholder="gemini-2.5-flash" autocomplete="off" value="${esc(localStorage.getItem("gmodel")||"")}">
 <label class="mu">Client ID de Google (calendario)</label><input id="gk" placeholder="…apps.googleusercontent.com" autocomplete="off" value="${esc(localStorage.getItem("gc")||"")}">
-<label class="mu">Teléfono de David (para «He olvidado el PIN»)</label><input id="td" type="tel" value="${esc(localStorage.getItem("tdv")||"")}"><label class="mu">Teléfono de Alba</label><input id="ta" type="tel" value="${esc(localStorage.getItem("tal")||"")}"><button class="b" onclick="saveSet()">Guardar</button>
+<label class="mu">Teléfono de David (para «He olvidado el PIN»)</label><input id="td" type="tel" value="${esc(localStorage.getItem("tdv")||"")}"><label class="mu">Teléfono de Alba</label><input id="ta" type="tel" value="${esc(localStorage.getItem("tal")||"")}"><div class="f" style="font-size:17px;margin-top:10px">Sincronización en la nube</div><div class="mu" id="cs">${cloudTxt()}</div><textarea id="fc" rows="3" placeholder="Pega aquí tu firebaseConfig (el bloque con apiKey, projectId…)">${esc(localStorage.getItem("fbt")||"")}</textarea><input id="fe" type="email" autocomplete="off" placeholder="Correo de la cuenta compartida" value="${esc(localStorage.getItem("fbe")||"")}"><input id="fp" type="password" autocomplete="off" placeholder="Contraseña de la cuenta compartida" value="${esc(localStorage.getItem("fbp")||"")}"><button class="b s" onclick="cloudUp()">Subir los datos de este móvil a la nube</button><button class="b" onclick="saveSet()">Guardar</button>
 <div class="row"><button class="b s" onclick="expData()">Exportar copia</button><button class="b s" onclick="$('#bk').click()">Importar copia</button></div><input type="file" id="bk" accept="application/json,.json" hidden onchange="impData(this.files[0])">
 <button class="b s" onclick="lkChange()">Cambiar PIN</button><button class="b s" onclick="lkBio()">Activar huella / Face ID</button><button class="b s" onclick="lkLock()">Cerrar sesión (volver a pedir el PIN)</button><button class="b s" onclick="mclose()">Cerrar</button><div class="mu">Los datos se guardan solo en este móvil. Para pasarlos a otro, exporta una copia y la importas allí.</div></div>`}
-function saveSet(){try{localStorage.setItem("gm",$("#sk").value.trim());localStorage.setItem("gmodel",$("#gmo").value.trim());localStorage.setItem("gc",$("#gk").value.trim());localStorage.setItem("tdv",$("#td").value.trim());localStorage.setItem("tal",$("#ta").value.trim())}catch(e){}mclose();say("Ajustes guardados")}
+function saveSet(){let ch=false,bad=false;try{const o=k=>localStorage.getItem(k)||"",s=(k,v)=>localStorage.setItem(k,v),old=o("fbc")+o("fbe")+o("fbp");
+ s("gm",$("#sk").value.trim());s("gmodel",$("#gmo").value.trim());s("gc",$("#gk").value.trim());s("tdv",$("#td").value.trim());s("tal",$("#ta").value.trim());
+ s("fbt",$("#fc").value.trim());s("fbc",parseFb($("#fc").value));bad=!!$("#fc").value.trim()&&!o("fbc");s("fbe",$("#fe").value.trim().toLowerCase());s("fbp",$("#fp").value);ch=old!==(o("fbc")+o("fbe")+o("fbp"))}catch(e){}
+ mclose();say(bad?"No he podido leer la configuración de Firebase":"Ajustes guardados");if(ch&&!bad)setTimeout(()=>location.reload(),700)}
+function parseFb(x){const o={};(x||"").replace(/(\w+)\s*:\s*["']([^"']*)["']/g,(m,k,v)=>{o[k]=v;return m});return o.apiKey&&o.projectId&&o.appId?JSON.stringify(o):""}
+const cloudTxt=()=>{const s=window.cloudState;return s==="ok"?"Sincronizado ✓":s==="connecting"?"Conectando…":s==="off"?"Sincronización desactivada: los datos solo están en este móvil.":"Problema: "+s};
+async function cloudUp(){try{const raw=JSON.parse(localStorage.getItem("ms")||"{}"),dbx=await claude.use("db");let n=0;for(const c of ["menu","compra","recetas","congelador"])for(const o of (raw[c]||[])){if(!o.id)continue;await dbx.collection(c).doc(o.id).set(o);n++}say(n?n+" elementos enviados a la nube":"No hay datos locales que subir")}catch(e){say("No se pudo subir: guarda antes la configuración de sincronización")}}
 function expData(){const b=new Blob([JSON.stringify({menu:S.menu,compra:S.compra,recetas:S.recetas,congelador:S.congelador})],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="cookies-house-copia-"+today()+".json";document.body.appendChild(a);a.click();a.remove()}
 async function impData(f){if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.menu)||!Array.isArray(d.compra)||!Array.isArray(d.recetas))throw 0;if(!confirm("Esto reemplaza los datos de este móvil. ¿Continuar?"))return;S.menu=d.menu;S.compra=d.compra;S.recetas=d.recetas;if(Array.isArray(d.congelador))S.congelador=d.congelador;lsSave();mclose();render();say("Copia importada")}catch(e){say("Ese archivo no es una copia válida")}}
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
