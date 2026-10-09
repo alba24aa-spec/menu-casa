@@ -180,24 +180,28 @@ CATEGORÍAS de receta (usa exactamente una): Carne, Pescado y marisco, Pasta y a
 MOMENTO: Comida, Cena o Ambas. Guisos y platos contundentes: Comida. Platos ligeros, tortillas, pizzas, tostas, ensaladas y cremas: Cena. Si vale para los dos: Ambas.
 INGREDIENTES: los principales y habituales de la receta en España según su nombre, sin cantidades, sin sal, agua ni pimienta, máximo 10, con nombres de supermercado (por ejemplo "pechuga de pollo", "tomate cherry"). Si el nombre es demasiado genérico (por ejemplo "Pasta", "Pescado", "Sopa") o es comida de cadena o restaurante, devuelve una lista vacía.
 CAPTURAS DE LISTAS DE LA COMPRA: transcribe solo los artículos pendientes, ignora los tachados o completados, no inventes ni completes nada, un artículo por elemento con la primera letra en mayúscula.
-MENÚS: sanos y equilibrados (patrón mediterráneo): verdura casi a diario, pescado 2 o 3 veces por semana (alguno azul), carne roja poco frecuente, sin ultraprocesados, cenas más ligeras. Las legumbres se comen con moderación: como máximo un plato por semana y mejor no repetir en semanas seguidas. Cocina casera y de temporada. Las comidas se cocinan por tandas para dos días; las cenas son siempre distintas y variadas. Prioriza las recetas del recetario de la familia usando su nombre exacto y añade pocas recetas nuevas. No des consejos médicos.`;
+MENÚS: sanos y equilibrados (patrón mediterráneo): verdura casi a diario, pescado 2 o 3 veces por semana (alguno azul), carne roja poco frecuente, sin ultraprocesados, cenas más ligeras. Las legumbres se comen con moderación: como máximo un plato por semana y mejor no repetir en semanas seguidas. Cocina casera y de temporada. Las comidas se cocinan por tandas para dos días; las cenas son siempre distintas y variadas. Los viernes la cena es siempre pizza. Prioriza las recetas del recetario de la familia usando su nombre exacto y añade pocas recetas nuevas. No des consejos médicos.`;
+async function pickModel(key){try{const mu="https://generativelanguage.googleapis.com/v1beta/models?pageSize=200";let r=await fetch(mu,{headers:{"x-goog-api-key":key}});if(r.status===401||r.status===403)r=await fetch(mu+"&key="+encodeURIComponent(key));if(!r.ok)return"";const d=await r.json();
+ const ok=(d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")).map(m=>String(m.name).replace("models/","")).filter(n=>/^gemini-[\d.]+-flash(-[a-z0-9-]*)?$/.test(n)&&!/lite|image|tts|live|audio|thinking|exp|embedding|vision/.test(n));
+ const ver=n=>parseFloat((n.match(/gemini-([\d.]+)-/)||[])[1]||0),st=n=>/preview|latest/.test(n)?0:1;ok.sort((a,b)=>st(b)-st(a)||ver(b)-ver(a)||a.length-b.length);return ok[0]||""}catch(e){return""}}
 let lastCall=0;const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const sample={
  limits:async()=>({images:{maxCount:3,mediaTypes:["image/jpeg","image/png","image/webp"]}}),
  json:async(prompt,o)=>{o=o||{};const key=LS("gm");if(!key){window.say&&window.say("Falta la clave de Gemini: añádela en Ajustes (⚙)");throw err("no_key")}
   const parts=[];for(const f of (o.images?[...o.images]:[])){const j=await shrink(f);parts.push({inlineData:{mimeType:j.type||"image/jpeg",data:await b64(j)}})}
   parts.push({text:prompt});
-  const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(LS("gmodel")||"gemini-2.5-flash")+":generateContent";
+  const U=()=>"https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(LS("gmodel")||"gemini-2.5-flash")+":generateContent";let picked=false;
   for(let n=0;;n++){
    const w=lastCall+4500-Date.now();if(w>0)await sleep(w);lastCall=Date.now();
-   let r;try{r=await fetch(url,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:SYS}]},contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:.7}})})}catch(e){throw err("network")}
+   let r;try{const body=JSON.stringify({systemInstruction:{parts:[{text:SYS}]},contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:.7}}),post=(u,h)=>fetch(u,{method:"POST",headers:h,body});r=await post(U(),{"content-type":"application/json","x-goog-api-key":key});if(r.status===401||r.status===403){const r2=await post(U()+"?key="+encodeURIComponent(key),{"content-type":"application/json"});if(r2.ok||(r2.status!==401&&r2.status!==403))r=r2}}catch(e){throw err("network")}
    if(r.status===429&&n<2){await sleep(15000);continue}
-   if(!r.ok){let eb="";try{eb=await r.text()}catch(e){}throw err(/API key|API_KEY/i.test(eb)||r.status===403?"bad_key":"api_"+r.status)}
+   if(r.status===404&&!picked){picked=true;const m=await pickModel(key);if(m){try{localStorage.setItem("gmodel",m)}catch(e){}continue}}
+   if(!r.ok){let eb="";try{eb=await r.text()}catch(e){}const ee=err(/API key|API_KEY/i.test(eb)||r.status===401||r.status===403?"bad_key":"api_"+r.status);ee.detail=r.status+" "+eb.replace(/\s+/g," ").slice(0,260);throw ee}
    const d=await r.json(),txt=((((d.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||"").join("");
    if(!txt)throw err("empty");
    try{return JSON.parse(txt.replace(/```json|```/g,"").trim())}catch(e){const m=txt.match(/[\[{][\s\S]*[\]}]/);try{return JSON.parse(m[0])}catch(e2){throw err("bad_json")}}}}
 };
-window.aiMsg=e=>({no_key:"Falta la clave de Gemini: añádela en Ajustes (⚙).",bad_key:"La clave de Gemini no es válida o no tiene permiso. Revísala en Ajustes (⚙).",api_429:"Has llegado al límite de uso de Gemini. Espera un par de minutos y vuelve a intentarlo.",api_404:"Ese modelo de Gemini no existe. Cambia el nombre del modelo en Ajustes (⚙).",network:"No hay conexión con Gemini.",bad_json:"No se pudo leer la respuesta de la IA. Prueba otra vez.",empty:"La IA no devolvió respuesta. Prueba otra vez."}[e&&e.code]||"La IA ha fallado ("+((e&&e.code)||"error")+"). Prueba otra vez.");
+window.aiMsg=e=>({no_key:"Falta la clave de Gemini: añádela en Ajustes (⚙).",bad_key:"Google ha rechazado la clave. Comprueba que la has pegado entera y pulsa «Probar la conexión» para ver el detalle.",api_429:"Has llegado al límite de uso de Gemini. Espera un par de minutos y vuelve a intentarlo.",api_404:"Ese modelo de Gemini no existe. Cambia el nombre del modelo en Ajustes (⚙).",network:"No hay conexión con Gemini.",bad_json:"No se pudo leer la respuesta de la IA. Prueba otra vez.",empty:"La IA no devolvió respuesta. Prueba otra vez."}[e&&e.code]||"La IA ha fallado ("+((e&&e.code)||"error")+"). Prueba otra vez.");
 let tok=null;
 function gtoken(cid){return new Promise((res,rej)=>{if(tok&&tok.exp>Date.now()+6e4)return res(tok.t);
  const go=()=>{try{google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/calendar.readonly",callback:r=>{if(r.error||!r.access_token)return rej(err("auth"));tok={t:r.access_token,exp:Date.now()+(r.expires_in||3600)*1e3};res(r.access_token)},error_callback:()=>rej(err("auth"))}).requestAccessToken()}catch(e){rej(err("auth"))}};
@@ -235,7 +239,7 @@ const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOStr
 const fmt=d=>{const[y,m,a]=d.split("-");return `${DIAS[new Date(+y,m-1,+a).getDay()]} ${a}/${m}`};
 let S={menu:[],compra:[],recetas:[],congelador:[]},db=null,sample=null,tab="menu",prop=null,busy=false,msg="",tags=new Set(),open=false,ex="",st="";
 try{S=Object.assign(S,JSON.parse(localStorage.getItem("ms")||"{}"))}catch(e){}
-const lsSave=()=>{try{localStorage.setItem("ms",JSON.stringify(S))}catch(e){}};
+const lsSave=()=>{if(localStorage.getItem("fbc"))return;try{localStorage.setItem("ms",JSON.stringify(S))}catch(e){}};
 async function put(c,o){o.id=o.id||uid();if(db){try{await db.collection(c).doc(o.id).set(o);return}catch(e){}}
  const i=S[c].findIndex(x=>x.id===o.id);i<0?S[c].push(o):S[c][i]=o;lsSave();render()}
 async function del(c,id){if(db){try{await db.collection(c).doc(id).delete();return}catch(e){}}S[c]=S[c].filter(x=>x.id!==id);lsSave();render()}
@@ -256,7 +260,7 @@ function render(){
  }else if(tab==="rec"){recView(v)}else if(tab==="cong"){congView(v)}else{
   const it=x=>`<div class="card row ${x.comprado?"done":""}"><div class="row" style="justify-content:flex-start"><span class="ck" role="checkbox" aria-checked="${x.comprado}" tabindex="0" onclick="tog('${x.id}')">${x.comprado?"✓":""}</span><span class="t">${esc(x.articulo)}</span></div><button class="x" aria-label="Quitar" onclick="del('compra','${x.id}')">✕</button></div>`;
   v.innerHTML=`<div class="card"><div class="row"><input id="ca" placeholder="¿Qué falta en casa?" onkeydown="if(event.key==='Enter')addC()"><button class="b" style="width:52px;margin:0;padding:11px 0" onclick="addC()" aria-label="Añadir">+</button></div>
-  <details><summary class="mu">Importar lista de Alexa</summary>${capImg?`<button class="b s" onclick="$('#cimg').click()" ${ib?"disabled":""}>${ib?"Leyendo la captura…":"Importar desde captura"}</button><input type="file" id="cimg" accept="${capImg.mediaTypes.join(",")}" ${capImg.maxCount>1?"multiple":""} hidden onchange="imgPick(this.files)"><div class="mu">Haz una captura de la lista en la app de Alexa y elígela aquí.</div>`:(capImg===false?'<div class="mu">Importar por imagen no está disponible en este dispositivo.</div>':"")}<textarea id="cb" rows="4" placeholder="Pega aquí: un artículo por línea o separados por comas"></textarea><button class="b s" onclick="impC()">Importar sin duplicar</button></details></div>
+  ${capImg?`<button class="b s" onclick="$('#cimg2').click()" ${ib?"disabled":""}>${ib?"Leyendo la captura…":"📷 Importar desde captura"}</button><input type="file" id="cimg2" accept="${capImg.mediaTypes.join(",")}" ${capImg.maxCount>1?"multiple":""} hidden onchange="imgPick(this.files)">`:(capImg===false?'<div class="mu">La lectura de imágenes no está disponible en este dispositivo.</div>':"")}<button class="b s" onclick="voiceOpen()">🎤 Añadir varios por voz</button><details><summary class="mu">Importar lista de Alexa</summary>${capImg?`<button class="b s" onclick="$('#cimg').click()" ${ib?"disabled":""}>${ib?"Leyendo la captura…":"Importar desde captura"}</button><input type="file" id="cimg" accept="${capImg.mediaTypes.join(",")}" ${capImg.maxCount>1?"multiple":""} hidden onchange="imgPick(this.files)"><div class="mu">Haz una captura de la lista en la app de Alexa y elígela aquí.</div>`:(capImg===false?'<div class="mu">Importar por imagen no está disponible en este dispositivo.</div>':"")}<textarea id="cb" rows="4" placeholder="Pega aquí: un artículo por línea o separados por comas"></textarea><button class="b s" onclick="impC()">Importar sin duplicar</button></details></div>
   <div class="day f">Pendiente · ${P.length}</div>${P.map(it).join("")||'<p class="mu">Todo comprado.</p>'}
   <div class="day f">Comprado · ${C.length}</div>${C.map(it).join("")}${C.length?'<button class="b s" onclick="clrC()">Borrar comprados</button>':""}`;
  }
@@ -453,7 +457,7 @@ render();
  render()})();
 
 function openSet(){const o=$("#md");o.className="on";o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Ajustes</div>
-<label class="mu">Clave de Gemini (Google AI Studio)</label><input id="sk" type="password" placeholder="AIza…" autocomplete="off" value="${esc(localStorage.getItem("gm")||"")}"><label class="mu">Modelo de Gemini (déjalo vacío para usar el predeterminado)</label><input id="gmo" placeholder="gemini-2.5-flash" autocomplete="off" value="${esc(localStorage.getItem("gmodel")||"")}">
+<label class="mu">Clave de Gemini (Google AI Studio)</label><input id="sk" type="password" placeholder="AIza…" autocomplete="off" value="${esc(localStorage.getItem("gm")||"")}"><label class="mu">Modelo de Gemini (déjalo vacío para que la app elija uno)</label><input id="gmo" placeholder="gemini-2.5-flash" autocomplete="off" value="${esc(localStorage.getItem("gmodel")||"")}"><button class="b s" onclick="testAI()">Probar la conexión de IA</button><div class="mu" id="air"></div>
 <label class="mu">Client ID de Google (calendario)</label><input id="gk" placeholder="…apps.googleusercontent.com" autocomplete="off" value="${esc(localStorage.getItem("gc")||"")}">
 <label class="mu">Teléfono de David (para «He olvidado el PIN»)</label><input id="td" type="tel" value="${esc(localStorage.getItem("tdv")||"")}"><label class="mu">Teléfono de Alba</label><input id="ta" type="tel" value="${esc(localStorage.getItem("tal")||"")}"><div class="f" style="font-size:17px;margin-top:10px">Sincronización en la nube</div><div class="mu" id="cs">${cloudTxt()}</div><textarea id="fc" rows="3" placeholder="Pega aquí tu firebaseConfig (el bloque con apiKey, projectId…)">${esc(localStorage.getItem("fbt")||"")}</textarea><input id="fe" type="email" autocomplete="off" placeholder="Correo de la cuenta compartida" value="${esc(localStorage.getItem("fbe")||"")}"><input id="fp" type="password" autocomplete="off" placeholder="Contraseña de la cuenta compartida" value="${esc(localStorage.getItem("fbp")||"")}"><button class="b s" onclick="cloudUp()">Subir los datos de este móvil a la nube</button><button class="b" onclick="saveSet()">Guardar</button>
 <div class="row"><button class="b s" onclick="expData()">Exportar copia</button><button class="b s" onclick="$('#bk').click()">Importar copia</button></div><input type="file" id="bk" accept="application/json,.json" hidden onchange="impData(this.files[0])">
@@ -464,7 +468,12 @@ function saveSet(){let ch=false,bad=false;try{const o=k=>localStorage.getItem(k)
  mclose();say(bad?"No he podido leer la configuración de Firebase":"Ajustes guardados");if(ch&&!bad)setTimeout(()=>location.reload(),700)}
 function parseFb(x){const o={};(x||"").replace(/(\w+)\s*:\s*["']([^"']*)["']/g,(m,k,v)=>{o[k]=v;return m});return o.apiKey&&o.projectId&&o.appId?JSON.stringify(o):""}
 const cloudTxt=()=>{const s=window.cloudState;return s==="ok"?"Sincronizado ✓":s==="connecting"?"Conectando…":s==="off"?"Sincronización desactivada: los datos solo están en este móvil.":"Problema: "+s};
-async function cloudUp(){try{const raw=JSON.parse(localStorage.getItem("ms")||"{}"),dbx=await claude.use("db");let n=0;for(const c of ["menu","compra","recetas","congelador"])for(const o of (raw[c]||[])){if(!o.id)continue;await dbx.collection(c).doc(o.id).set(o);n++}say(n?n+" elementos enviados a la nube":"No hay datos locales que subir")}catch(e){say("No se pudo subir: guarda antes la configuración de sincronización")}}
+async function cloudUp(){try{const raw=JSON.parse(localStorage.getItem("ms")||"{}"),dbx=await claude.use("db");let n=0,m=0;
+ for(const c of ["menu","compra","congelador"])for(const o of (raw[c]||[])){if(!o.id)continue;await dbx.collection(c).doc(o.id).set(o);n++}
+ for(const o of (raw.recetas||[])){if(!o.id)continue;const k=norm(o.nombre||""),r=S.recetas.find(x=>norm(x.nombre)===k);
+  if(r){const d={...r};if(!(r.ing||[]).length&&(o.ing||[]).length){d.ing=o.ing;d.inf=o.inf}if(r.cat==="Sin clasificar"&&o.cat&&o.cat!=="Sin clasificar")d.cat=o.cat;if(r.mom!==o.mom&&o.mom==="Ambas")d.mom="Ambas";await dbx.collection("recetas").doc(r.id).set(d);m++}
+  else{await dbx.collection("recetas").doc(o.id).set(o);n++}}
+ say(n+m?`Enviado: ${n} elementos nuevos y ${m} recetas fusionadas con las de la nube`:"No hay datos locales que subir")}catch(e){say("No se pudo subir: guarda antes la configuración de sincronización")}}
 function expData(){const b=new Blob([JSON.stringify({menu:S.menu,compra:S.compra,recetas:S.recetas,congelador:S.congelador})],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="cookies-house-copia-"+today()+".json";document.body.appendChild(a);a.click();a.remove()}
 async function impData(f){if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.menu)||!Array.isArray(d.compra)||!Array.isArray(d.recetas))throw 0;if(!confirm("Esto reemplaza los datos de este móvil. ¿Continuar?"))return;S.menu=d.menu;S.compra=d.compra;S.recetas=d.recetas;if(Array.isArray(d.congelador))S.congelador=d.congelador;lsSave();mclose();render();say("Copia importada")}catch(e){say("Ese archivo no es una copia válida")}}
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
@@ -490,10 +499,11 @@ function sheet(){const sh=$("#sh"),w=wz;let sy,body="";
  sh.innerHTML=`<div class="in"><div class="row"><span class="f" style="font-size:20px">Asistente de menús</span><button class="x" aria-label="Cerrar" onclick="closeS()">✕</button></div><div class="top">${bot(busy?"think":(prop&&!w.edit?"dance":""))}<div class="bub">${sy}</div></div>${prop?"":'<div class="card">'}${body}${prop?"":"</div>"}</div>`}
 async function gen(){const w=wz;busy=true;msg="";prop=null;sheet();
  try{S.menu.forEach(m=>{if(m.ev&&m.fecha>=st&&m.fecha<=add(st,6))w.fuera.add(m.fecha+"|"+m.tipo)});
-  const days=Array.from({length:7},(_,i)=>add(st,i)),LD=days.filter(d=>!w.fuera.has(d+"|Comida")),DD=days.filter(d=>!w.fuera.has(d+"|Cena")),G=pairL(LD),fr=[...w.fuera].map(x=>x.replace("|"," ")).join("; ")||"ninguna";
+  const days=Array.from({length:7},(_,i)=>add(st,i)),LD=days.filter(d=>!w.fuera.has(d+"|Comida")),DD=days.filter(d=>!w.fuera.has(d+"|Cena")),G=pairL(LD),fr=[...w.fuera].map(x=>x.replace("|"," ")).join("; ")||"ninguna",vie=DD.find(f=>new Date(f+"T12:00:00").getDay()===5),vieNote=vie?`LA CENA DEL VIERNES (${fmt(vie)}) es SIEMPRE pizza: elige una del recetario de categoría Pizzas (nombre exacto) o propón una pizza nueva. El resto de cenas no son pizza.`:"";
   const r=await sample.json(`Planifica el menú de la semana del ${st} al ${add(st,6)} (lunes a domingo).
 COMIDAS: se cocinan para dos días. Cada grupo comparte el MISMO plato: ${G.map((g,i)=>`G${i+1}: ${g.map(f=>fmt(f)).join(" y ")}`).join("; ")||"ninguna"}. Un grupo de un solo día es un plato para ese día solo.
 CENAS: una distinta cada día, todas diferentes entre sí y de las comidas: ${DD.map(f=>fmt(f)).join(", ")||"ninguna"}.
+${vieNote}
 Franjas libres (no planificar): ${fr}.
 Semana anterior: ${prevWeek()}.
 ${rulesNote()}
@@ -504,13 +514,13 @@ Prioriza el recetario (nombre EXACTO) y propón como máximo 3 recetas nuevas en
 Responde SOLO con JSON: {"comidas":[{"g":1,"plato":"","categoria":"","ingredientes":[""],"nueva":false}],"cenas":[{"fecha":"YYYY-MM-DD","plato":"","categoria":"","ingredientes":[""],"nueva":false}]}`,{cache:false});
   prop=days.map(f=>({fecha:f,comida:{plato:"Libre",ingredientes:[],libre:true},cena:{plato:"Libre",ingredientes:[],libre:true}}));
   G.forEach((g,gi)=>{const o=(r.comidas||[]).find(x=>+x.g===gi+1)||{};g.forEach(f=>{prop.find(x=>x.fecha===f).comida={plato:o.plato||"(sin propuesta)",categoria:o.categoria,ingredientes:o.ingredientes||[],nueva:!!o.nueva,grp:gi+1,par:g.length>1?g:null}})});
-  DD.forEach(f=>{const o=(r.cenas||[]).find(x=>x.fecha===f)||{};prop.find(x=>x.fecha===f).cena={plato:o.plato||"(sin propuesta)",categoria:o.categoria,ingredientes:o.ingredientes||[],nueva:!!o.nueva}})}
+  DD.forEach(f=>{const o=(r.cenas||[]).find(x=>x.fecha===f)||{};prop.find(x=>x.fecha===f).cena={plato:o.plato||"(sin propuesta)",categoria:o.categoria,ingredientes:o.ingredientes||[],nueva:!!o.nueva}});prop.forEach(fixFri)}
  catch(e){msg=aiMsg(e)}
  busy=false;sheet()}
 async function regen(i){const d=prop[i];d.busy=true;sheet();
  try{const o=prop.filter((_,j)=>j!==i).map(x=>`${fmt(x.fecha)}: ${x.comida.plato} / ${x.cena.plato}`).join("; "),aL=!d.comida.libre,aC=!d.cena.libre;
-  const r=await sample.json(`Propón otra opción para ${fmt(d.fecha)}: ${aL?"comida"+(d.comida.par?" (se cocina para 2 días: "+d.comida.par.map(dn).join(" y ")+")":""):""}${aL&&aC?" y ":""}${aC?"cena":""}. Deben ser distintas de las actuales (${d.comida.plato} / ${d.cena.plato}) y de las del resto de la semana (${o}). Semana anterior: ${prevWeek()}. ${rulesNote()} Recetario, comidas: ${recNames("Comida")}. Recetario, cenas: ${recNames("Cena")}. Prioriza el recetario con el nombre exacto. Responde SOLO con JSON: {"comida":{"plato":"","categoria":"","ingredientes":[""],"nueva":false},"cena":{"plato":"","categoria":"","ingredientes":[""],"nueva":false}}`,{cache:false});
-  for(const k of ["comida","cena"]){if(d[k].libre||!r[k])continue;const n={plato:r[k].plato,categoria:r[k].categoria,ingredientes:r[k].ingredientes||[],nueva:!!r[k].nueva},g=d[k].grp;prop.forEach(x=>{if(x===d||(g&&x[k].grp===g))x[k]={...x[k],...n}})}}
+  const r=await sample.json(`Propón otra opción para ${fmt(d.fecha)}: ${aL?"comida"+(d.comida.par?" (se cocina para 2 días: "+d.comida.par.map(dn).join(" y ")+")":""):""}${aL&&aC?" y ":""}${aC?"cena":""}. Deben ser distintas de las actuales (${d.comida.plato} / ${d.cena.plato}) y de las del resto de la semana (${o}). Semana anterior: ${prevWeek()}. ${rulesNote()} Recetario, comidas: ${recNames("Comida")}. Recetario, cenas: ${recNames("Cena")}. ${new Date(d.fecha+"T12:00:00").getDay()===5&&!d.cena.libre?"Es viernes: la cena debe ser una pizza (del recetario, categoría Pizzas, o una nueva). ":""}Prioriza el recetario con el nombre exacto. Responde SOLO con JSON: {"comida":{"plato":"","categoria":"","ingredientes":[""],"nueva":false},"cena":{"plato":"","categoria":"","ingredientes":[""],"nueva":false}}`,{cache:false});
+  for(const k of ["comida","cena"]){if(d[k].libre||!r[k])continue;const n={plato:r[k].plato,categoria:r[k].categoria,ingredientes:r[k].ingredientes||[],nueva:!!r[k].nueva},g=d[k].grp;prop.forEach(x=>{if(x===d||(g&&x[k].grp===g))x[k]={...x[k],...n}})}fixFri(d)}
  catch(e){msg=aiMsg(e)}
  d.busy=false;sheet()}
 async function send(){for(const d of prop)for(const [k,t] of [["comida","Comida"],["cena","Cena"]]){const x=d[k],m=S.menu.find(y=>y.fecha===d.fecha&&y.tipo===t);if(x.libre&&m&&m.ev)continue;
@@ -542,4 +552,27 @@ function cgDay(id){const x=S.congelador.find(y=>y.id===id),o=$("#md");o.classNam
 function gdCheck(){const f=$("#gd").value,m=S.menu.find(y=>y.fecha===f&&y.tipo===$("#gk").value);$("#gw").textContent=m?`Ya hay «${m.plato}» en esa casilla: se sustituirá.`:(f?fmt(f):"")}
 async function cgDaySave(id){const x=S.congelador.find(y=>y.id===id),f=$("#gd").value,k=$("#gk").value;if(!f)return;const m=S.menu.find(y=>y.fecha===f&&y.tipo===k),dec=$("#gr").checked;
  await put("menu",{id:m&&m.id,fecha:f,tipo:k,plato:x.nombre,notas:"Del congelador",ing:[],fz:true});mclose();if(dec){const n=(+x.n||0)-1;if(n<=0)await del("congelador",id);else await put("congelador",{...x,n})}say(`Añadido: ${fmt(f)}, ${k}`)}
+
+/* ===== Prueba de IA y dictado por voz ===== */
+async function testAI(){const r=$("#air");try{localStorage.setItem("gm",$("#sk").value.trim());localStorage.setItem("gmodel",$("#gmo").value.trim())}catch(e){}
+ r.textContent="Probando…";try{const x=await sample.json('Responde SOLO con este JSON: {"ok":true}',{cache:false});r.textContent=x&&x.ok?"✓ Funciona. Modelo en uso: "+(localStorage.getItem("gmodel")||"gemini-2.5-flash"):"Respondió, pero algo raro: "+JSON.stringify(x)}catch(e){r.textContent="✗ "+aiMsg(e)+(e&&e.detail?" ["+e.detail+"]":"")}}
+let rec=null;
+const SRc=()=>window.SpeechRecognition||window.webkitSpeechRecognition;
+function voiceOpen(){const o=$("#md");o.className="on";const ok=!!SRc();
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Añadir por voz</div><p class="mu">${ok?"Pulsa el micrófono y di los productos seguidos: «leche, huevos y dos kilos de patatas».":"Este navegador no permite dictar dentro de la app. Usa el micrófono del teclado de tu móvil en el recuadro de abajo."}</p>${ok?'<button class="b" id="vm" onclick="voiceToggle()">🎤 Empezar a escuchar</button>':""}<textarea id="vt" rows="4" placeholder="Aquí aparece lo que dices (puedes corregirlo)"></textarea><button class="b" onclick="voiceGo()">Separar productos</button><button class="b s" onclick="voiceClose()">Cancelar</button></div>`}
+function voiceToggle(){const SR=SRc(),b=$("#vm");if(rec){try{rec.stop()}catch(e){}return}
+ const R=new SR();rec=R;R.lang="es-ES";R.continuous=true;R.interimResults=true;const base=$("#vt").value;
+ R.onresult=e=>{let s="";for(let i=0;i<e.results.length;i++)s+=e.results[i][0].transcript+" ";$("#vt").value=(base+" "+s).trim()};
+ R.onend=()=>{rec=null;const m=$("#vm");if(m)m.textContent="🎤 Empezar a escuchar"};
+ R.onerror=e=>{say(e.error==="not-allowed"||e.error==="service-not-allowed"?"Permite el micrófono para dictar":"No se pudo escuchar: "+e.error)};
+ try{R.start();b.textContent="⏹ Parar"}catch(x){rec=null}}
+function voiceClose(){try{rec&&rec.stop()}catch(e){}rec=null;mclose()}
+async function voiceGo(){const x=$("#vt").value.trim();if(!x)return;try{rec&&rec.stop()}catch(e){}rec=null;let L=null;
+ try{if(!sample)throw 0;const r=await sample.json(`Este texto es un dictado por voz de productos de la compra. Sepáralo en artículos individuales, corrige los errores típicos del reconocimiento de voz, conserva las cantidades que se digan (por ejemplo "2 kg de patatas") y no inventes nada. Un artículo por elemento, con la primera letra en mayúscula. Texto: «${x}». Responde SOLO con JSON: {"articulos":["..."]}`,{cache:false});L=(r.articulos||[]).map(s=>String(s).trim()).filter(Boolean)}catch(e){L=null}
+ if(!L||!L.length)L=x.split(/\s*(?:,|;|\n|\s+y\s+|\s+e\s+|\s+más\s+|\s+mas\s+|\s+también\s+)\s*/i).map(s=>s.trim()).filter(Boolean).map(s=>s[0].toUpperCase()+s.slice(1));
+ voiceReview(L)}
+function voiceReview(L){const o=$("#md");o.className="on";o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Revisa la lista</div><p class="mu">Corrige o borra lo que no esté bien; los repetidos no se añaden.</p><textarea id="ir" rows="9">${esc(L.join("\n"))}</textarea><button class="b" onclick="imgOk()">Añadir a la compra</button><button class="b s" onclick="mclose()">Cancelar</button></div>`}
+
+const isPz=x=>x&&(x.categoria==="Pizzas"||/pizza/i.test(x.plato||""));
+function fixFri(d){if(new Date(d.fecha+"T12:00:00").getDay()!==5||d.cena.libre||isPz(d.cena))return;const pw=prevWeek(),all=S.recetas.filter(r=>r.cat==="Pizzas"),pool=all.filter(r=>!pw.includes(r.nombre)),L=pool.length?pool:all;if(!L.length)return;const p=L[Math.floor(Math.random()*L.length)];d.cena={plato:p.nombre,categoria:"Pizzas",ingredientes:p.ing||[],nueva:false}}
 </script></body></html>
