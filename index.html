@@ -184,24 +184,32 @@ MENÚS: sanos y equilibrados (patrón mediterráneo): verdura casi a diario, pes
 async function pickModel(key){try{const mu="https://generativelanguage.googleapis.com/v1beta/models?pageSize=200";let r=await fetch(mu,{headers:{"x-goog-api-key":key}});if(r.status===401||r.status===403)r=await fetch(mu+"&key="+encodeURIComponent(key));if(!r.ok)return"";const d=await r.json();
  const ok=(d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")).map(m=>String(m.name).replace("models/","")).filter(n=>/^gemini-[\d.]+-flash(-[a-z0-9-]*)?$/.test(n)&&!/lite|image|tts|live|audio|thinking|exp|embedding|vision/.test(n));
  const ver=n=>parseFloat((n.match(/gemini-([\d.]+)-/)||[])[1]||0),st=n=>/preview|latest/.test(n)?0:1;ok.sort((a,b)=>st(b)-st(a)||ver(b)-ver(a)||a.length-b.length);return ok[0]||""}catch(e){return""}}
+let modsC=null;
+async function altModels(key){if(modsC)return modsC;try{const mu="https://generativelanguage.googleapis.com/v1beta/models?pageSize=200";let r=await fetch(mu,{headers:{"x-goog-api-key":key}});if(r.status===401||r.status===403)r=await fetch(mu+"&key="+encodeURIComponent(key));if(!r.ok)return[];const d=await r.json();
+ const ver=n=>parseFloat((n.match(/gemini-([\d.]+)-/)||[])[1]||0),st=n=>/preview|latest/.test(n)?0:1,lt=n=>/lite/.test(n)?1:0;
+ modsC=(d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")).map(m=>String(m.name).replace("models/","")).filter(n=>/^gemini-[\d.]+-flash(-lite)?(-[a-z0-9-]*)?$/.test(n)&&!/image|tts|live|audio|thinking|exp|embedding|vision/.test(n)).sort((a,b)=>st(b)-st(a)||lt(a)-lt(b)||ver(b)-ver(a));return modsC}catch(e){return[]}}
 let lastCall=0;const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const sample={
  limits:async()=>({images:{maxCount:3,mediaTypes:["image/jpeg","image/png","image/webp"]}}),
  json:async(prompt,o)=>{o=o||{};const key=LS("gm");if(!key){window.say&&window.say("Falta la clave de Gemini: añádela en Ajustes (⚙)");throw err("no_key")}
   const parts=[];for(const f of (o.images?[...o.images]:[])){const j=await shrink(f);parts.push({inlineData:{mimeType:j.type||"image/jpeg",data:await b64(j)}})}
   parts.push({text:prompt});
-  const U=()=>"https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(LS("gmodel")||"gemini-2.5-flash")+":generateContent";let picked=false;
+  let useModel=null;const tried=new Set();const U=()=>"https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(useModel||LS("gmodel")||"gemini-2.5-flash")+":generateContent";let picked=false,warned=false;
   for(let n=0;;n++){
    const w=lastCall+4500-Date.now();if(w>0)await sleep(w);lastCall=Date.now();
    let r;try{const body=JSON.stringify({systemInstruction:{parts:[{text:SYS}]},contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",temperature:.7}}),post=(u,h)=>fetch(u,{method:"POST",headers:h,body});r=await post(U(),{"content-type":"application/json","x-goog-api-key":key});if(r.status===401||r.status===403){const r2=await post(U()+"?key="+encodeURIComponent(key),{"content-type":"application/json"});if(r2.ok||(r2.status!==401&&r2.status!==403))r=r2}}catch(e){throw err("network")}
    if(r.status===429&&n<2){await sleep(15000);continue}
    if(r.status===404&&!picked){picked=true;const m=await pickModel(key);if(m){try{localStorage.setItem("gmodel",m)}catch(e){}continue}}
+   if([500,502,503,504].includes(r.status)&&n<7){if(!warned){warned=true;window.say&&window.say("Gemini está saturado: reintentando…")}
+    if(n<2){await sleep(2500*(n+1));continue}
+    const cur=useModel||LS("gmodel")||"gemini-2.5-flash";tried.add(cur);const nx=(await altModels(key)).find(m=>!tried.has(m));if(nx){useModel=nx;continue}
+    if(n<5){await sleep(6000);continue}}
    if(!r.ok){let eb="";try{eb=await r.text()}catch(e){}const ee=err(/API key|API_KEY/i.test(eb)||r.status===401||r.status===403?"bad_key":"api_"+r.status);ee.detail=r.status+" "+eb.replace(/\s+/g," ").slice(0,260);throw ee}
-   const d=await r.json(),txt=((((d.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||"").join("");
+   window.aiUsed=useModel||LS("gmodel")||"gemini-2.5-flash";const d=await r.json(),txt=((((d.candidates||[])[0]||{}).content||{}).parts||[]).map(x=>x.text||"").join("");
    if(!txt)throw err("empty");
    try{return JSON.parse(txt.replace(/```json|```/g,"").trim())}catch(e){const m=txt.match(/[\[{][\s\S]*[\]}]/);try{return JSON.parse(m[0])}catch(e2){throw err("bad_json")}}}}
 };
-window.aiMsg=e=>({no_key:"Falta la clave de Gemini: añádela en Ajustes (⚙).",bad_key:"Google ha rechazado la clave. Comprueba que la has pegado entera y pulsa «Probar la conexión» para ver el detalle.",api_429:"Has llegado al límite de uso de Gemini. Espera un par de minutos y vuelve a intentarlo.",api_404:"Ese modelo de Gemini no existe. Cambia el nombre del modelo en Ajustes (⚙).",network:"No hay conexión con Gemini.",bad_json:"No se pudo leer la respuesta de la IA. Prueba otra vez.",empty:"La IA no devolvió respuesta. Prueba otra vez."}[e&&e.code]||"La IA ha fallado ("+((e&&e.code)||"error")+"). Prueba otra vez.");
+window.aiMsg=e=>({no_key:"Falta la clave de Gemini: añádela en Ajustes (⚙).",bad_key:"Google ha rechazado la clave. Comprueba que la has pegado entera y pulsa «Probar la conexión» para ver el detalle.",api_503:"Los servidores de Gemini están saturados. La app ya ha reintentado y probado otros modelos; espera unos minutos y vuelve a intentarlo.",api_500:"Gemini ha tenido un error interno. Prueba de nuevo en unos minutos.",api_502:"Gemini no responde ahora mismo. Prueba de nuevo en unos minutos.",api_504:"Gemini ha tardado demasiado. Prueba de nuevo.",api_429:"Has llegado al límite de uso de Gemini. Espera un par de minutos y vuelve a intentarlo.",api_404:"Ese modelo de Gemini no existe. Cambia el nombre del modelo en Ajustes (⚙).",network:"No hay conexión con Gemini.",bad_json:"No se pudo leer la respuesta de la IA. Prueba otra vez.",empty:"La IA no devolvió respuesta. Prueba otra vez."}[e&&e.code]||"La IA ha fallado ("+((e&&e.code)||"error")+"). Prueba otra vez.");
 let tok=null;
 function gtoken(cid){return new Promise((res,rej)=>{if(tok&&tok.exp>Date.now()+6e4)return res(tok.t);
  const go=()=>{try{google.accounts.oauth2.initTokenClient({client_id:cid,scope:"https://www.googleapis.com/auth/calendar.readonly",callback:r=>{if(r.error||!r.access_token)return rej(err("auth"));tok={t:r.access_token,exp:Date.now()+(r.expires_in||3600)*1e3};res(r.access_token)},error_callback:()=>rej(err("auth"))}).requestAccessToken()}catch(e){rej(err("auth"))}};
@@ -555,7 +563,7 @@ async function cgDaySave(id){const x=S.congelador.find(y=>y.id===id),f=$("#gd").
 
 /* ===== Prueba de IA y dictado por voz ===== */
 async function testAI(){const r=$("#air");try{localStorage.setItem("gm",$("#sk").value.trim());localStorage.setItem("gmodel",$("#gmo").value.trim())}catch(e){}
- r.textContent="Probando…";try{const x=await sample.json('Responde SOLO con este JSON: {"ok":true}',{cache:false});r.textContent=x&&x.ok?"✓ Funciona. Modelo en uso: "+(localStorage.getItem("gmodel")||"gemini-2.5-flash"):"Respondió, pero algo raro: "+JSON.stringify(x)}catch(e){r.textContent="✗ "+aiMsg(e)+(e&&e.detail?" ["+e.detail+"]":"")}}
+ r.textContent="Probando…";try{const x=await sample.json('Responde SOLO con este JSON: {"ok":true}',{cache:false});r.textContent=x&&x.ok?"✓ Funciona. Modelo en uso: "+(window.aiUsed||localStorage.getItem("gmodel")||"gemini-2.5-flash"):"Respondió, pero algo raro: "+JSON.stringify(x)}catch(e){r.textContent="✗ "+aiMsg(e)+(e&&e.detail?" ["+e.detail+"]":"")}}
 let rec=null;
 const SRc=()=>window.SpeechRecognition||window.webkitSpeechRecognition;
 function voiceOpen(){const o=$("#md");o.className="on";const ok=!!SRc();
