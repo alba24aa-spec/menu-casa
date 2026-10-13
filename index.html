@@ -413,7 +413,7 @@ async function syncCal(){if(cst==="load")return;cst="load";cerr="";calRender();
  try{const mcp=window.claude?await claude.use("mcp"):null;if(!mcp){cst="nomcp";calRender();return}
   const r=await mcp.callTool("Google Calendar","list_events",{calendarId:(localStorage.getItem("cid")||CAL_ID),startTime:new Date().toISOString(),endTime:new Date(Date.now()+60*864e5).toISOString(),orderBy:"startTime",pageSize:30},{cache:{refresh:true}});
   const d=r.payload||{};ce=Array.isArray(d.events)?d.events.filter(e=>e.status!=="cancelled"):[];ctit=d.summary||ctit;cts=(r.cache&&r.cache.storedAt)||Date.now();cst="ok"}
- catch(e){cst="err";cerr=(CE[e.code]||"No se pudo sincronizar el calendario.")+(e.code==="tool_error"&&e.message?" "+e.message:"")}
+ catch(e){cst="err";cerr=(CE[e.code]||"No se pudo sincronizar el calendario.")+(e.code==="tool_error"&&e.message?" "+e.message:"")+(e.code==="auth"?" Client ID guardado: "+(localStorage.getItem("gc")||"(vacío)"):"")}
  calRender()}
 const bot=(c)=>`<div class="pv"><div class="b3 ${c}">${LAY}</div></div>`;
 const chip=(on,fn,l)=>`<button class="chip ${on?"on":""}" onclick="${fn}">${l}</button>`;
