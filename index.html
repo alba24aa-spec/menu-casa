@@ -280,9 +280,9 @@ let wz={step:1,fuera:new Set(),frez:null,txt:"",edit:false};st=nextMon();
 const mon=d=>add(d,-((new Date(d+"T12:00:00").getDay()+6)%7));let wk=mon(today()),ed=null;
 function edit(d,k){const m=S.menu.find(x=>x.fecha===d&&x.tipo===k);ed={d,t:k,id:m?.id,plato:m&&m.plato!=="Libre"?m.plato:"",notas:m&&m.notas!=="Fuera de casa"?m.notas||"":"",ing:m?.ing||[],ev:!!m?.ev};md()}
 function md(){const o=$("#md");if(!ed){o.className="";o.innerHTML="";return}o.className="on";
- o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">${fmt(ed.d)} · ${ed.t}</div><input id="mp" placeholder="¿Qué se come?" value="${esc(ed.plato)}" oninput="sg(this.value)" autocomplete="off"><div id="sgl"></div><input id="mn" placeholder="Notas (sobras de ayer…)" value="${esc(ed.notas)}"><button class="b" onclick="saveE()">Guardar</button><div class="row"><button class="b s" onclick="saveE(true)">Libre</button>${ed.id?`<button class="b s" onclick="delE()">Quitar</button>`:""}<button class="b s" onclick="ed=null;md()">Cancelar</button></div></div>`;$("#mp").focus()}
-async function saveE(libre){const p=libre?"Libre":$("#mp").value.trim();if(!p){ed=null;md();return}
- await put("menu",{id:ed.id,fecha:ed.d,tipo:ed.t,plato:p,notas:libre?"Fuera de casa":$("#mn").value.trim(),ing:libre?[]:ed.ing,...(ed.ev&&!libre?{ev:true}:{})});if(!libre&&!ed.ev)await upsertRec(p,"",ed.t,ed.ing);ed=null;md()}
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">${fmt(ed.d)} · ${ed.t}</div><input id="mp" placeholder="¿Qué se come?" value="${esc(ed.plato)}" oninput="sg(this.value)" autocomplete="off"><div id="sgl"></div><input id="mn" placeholder="Notas (sobras de ayer…)" value="${esc(ed.notas)}">${fzBlock()}<button class="b" onclick="saveE()">Guardar</button><div class="row"><button class="b s" onclick="saveE(true)">Libre</button>${ed.id?`<button class="b s" onclick="delE()">Quitar</button>`:""}<button class="b s" onclick="ed=null;md()">Cancelar</button></div></div>`;$("#mp").focus()}
+async function saveE(libre){const p=libre?"Libre":$("#mp").value.trim(),fz=fzRead();if(!p){ed=null;md();return}
+ await put("menu",{id:ed.id,fecha:ed.d,tipo:ed.t,plato:p,notas:libre?"Fuera de casa":$("#mn").value.trim(),ing:libre?[]:ed.ing,...(ed.ev&&!libre?{ev:true}:{})});if(!libre&&!ed.ev)await upsertRec(p,"",ed.t,ed.ing);if(!libre&&fz.id)await cgTake(fz.id,fz.q);ed=null;md()}
 async function delE(){await del("menu",ed.id);ed=null;md()}
 async function weekShop(){const n=await addCompra(S.menu.filter(m=>m.fecha>=wk&&m.fecha<=add(wk,6)).flatMap(m=>m.ing||[]));say(n?n+" ingredientes a la compra":"Nada nuevo que añadir")}
 const CATS=["Carne","Pescado y marisco","Pasta y arroces","Cremas y sopas","Legumbres","Verduras y ensaladas","Huevos y tortillas","Pizzas","Bocadillos, wraps y tostas","Postres","Otros"];
@@ -350,10 +350,10 @@ function sg(q){const n=norm(q),o=$("#sgl"),w=n.split(" ").filter(Boolean);if(n.l
  o.innerHTML=L.map(r=>`<button class="sg" onclick="pick('${r.id}')"><span>${esc(r.nombre)}</span><span class="tag ${r.mom}">${r.mom}</span></button>`).join("")}
 function pick(id){const r=S.recetas.find(x=>x.id===id);$("#mp").value=r.nombre;ed.ing=r.ing||[];ed.ev=false;$("#sgl").innerHTML=""}
 function recDay(id){const r=S.recetas.find(x=>x.id===id),o=$("#md"),k=r.mom==="Cena"?"Cena":"Comida";o.className="on";
- o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Añadir al menú</div><div class="mu">${esc(r.nombre)}</div><input type="date" id="dd" value="${wk>today()?wk:today()}" oninput="awCheck()" aria-label="Día"><select id="dk" onchange="awCheck()" aria-label="Comida o cena">${["Comida","Cena"].map(c=>`<option ${c===k?"selected":""}>${c}</option>`).join("")}</select><div class="mu" id="aw"></div><button class="b" onclick="recDaySave('${id}')">Añadir al menú</button><button class="b s" onclick="mclose()">Cancelar</button></div>`;awCheck()}
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Añadir al menú</div><div class="mu">${esc(r.nombre)}</div><input type="date" id="dd" value="${wk>today()?wk:today()}" oninput="awCheck()" aria-label="Día"><select id="dk" onchange="awCheck()" aria-label="Comida o cena">${["Comida","Cena"].map(c=>`<option ${c===k?"selected":""}>${c}</option>`).join("")}</select><div class="mu" id="aw"></div>${fzBlock()}<button class="b" onclick="recDaySave('${id}')">Añadir al menú</button><button class="b s" onclick="mclose()">Cancelar</button></div>`;awCheck()}
 function awCheck(){const f=$("#dd").value,m=S.menu.find(x=>x.fecha===f&&x.tipo===$("#dk").value);$("#aw").textContent=m?`Ya hay «${m.plato}» en esa casilla: se sustituirá.`:(f?fmt(f):"")}
 async function recDaySave(id){const r=S.recetas.find(x=>x.id===id),f=$("#dd").value,k=$("#dk").value;if(!f)return;const m=S.menu.find(x=>x.fecha===f&&x.tipo===k);
- await put("menu",{id:m?.id,fecha:f,tipo:k,plato:r.nombre,notas:"",ing:r.ing||[]});mclose();say(`Añadida: ${fmt(f)}, ${k}`)}
+ await put("menu",{id:m?.id,fecha:f,tipo:k,plato:r.nombre,notas:"",ing:r.ing||[]});const fz=fzRead();if(fz.id)await cgTake(fz.id,fz.q);mclose();say(`Añadida: ${fmt(f)}, ${k}`)}
 const SEED=[
 ["Carne","Comida",["Carrilleras con patata gratinada","Costillas al horno con ensaladilla rusa","Costillas al horno","Lacón con patata y pimientos","Polenta con costillas desmechadas","Pollo guisado con verduras","Cachopo con patatas","Costillas desmechadas con fajitas","Ternera con verduras y ñoquis","Albóndigas con patatas"]],
 ["Carne","Ambas",["Contramuslos de pollo al horno con verduras","Filete de ternera a la plancha con verduritas salteadas","Filetes rusos con arroz","Hamburguesa","Hamburguesa con ensalada","Hamburguesas de pollo, zanahoria y espinacas","Pollo al horno","Pollo empanado","Pollo con piña y cherries","Rodaja de patata asada + solomillo + queso de cabra + cebolla caramelizada + crujiente de beicon","Salchichas con tomate cherry y patatas","San Jacobos","Solomillo de cerdo a la plancha","Escalopines al Cabrales"]],
@@ -534,7 +534,7 @@ async function regen(i){const d=prop[i];d.busy=true;sheet();
 async function send(){for(const d of prop)for(const [k,t] of [["comida","Comida"],["cena","Cena"]]){const x=d[k],m=S.menu.find(y=>y.fecha===d.fecha&&y.tipo===t);if(x.libre&&m&&m.ev)continue;
   await put("menu",{id:m&&m.id,fecha:d.fecha,tipo:t,plato:x.plato,notas:x.libre?"Fuera de casa":(x.par?"Para 2 días: "+x.par.map(dn).join(" y "):""),ing:x.ingredientes||[]});
   if(!x.libre&&x.plato&&x.plato[0]!=="(")await upsertRec(x.plato,x.categoria,t,x.ingredientes)}
- wk=mon(prop[0].fecha);prop=null;tab="menu";closeS();render();say("¡Menú enviado!")}
+ const pl=prop.flatMap(d=>[d.comida.plato,d.cena.plato]).filter(p=>p&&p!=="Libre"&&p[0]!=="(");wk=mon(prop[0].fecha);prop=null;tab="menu";closeS();render();say("¡Menú enviado!");cgAfter(pl)}
 
 /* ===== Congelador ===== */
 const CGT=["Receta completa","Base","Ingrediente"];
@@ -556,10 +556,10 @@ function cgEdit(id){const x=S.congelador.find(y=>y.id===id)||{nombre:"",tipo:"Re
 async function cgSave(id){const nm=$("#cn").value.trim();if(!nm)return;const x=S.congelador.find(y=>y.id===id)||{};await put("congelador",{...x,id:id||undefined,nombre:nm,tipo:$("#ct").value,n:Math.max(1,parseInt($("#cc").value)||1),f:$("#cd").value,notas:$("#cm").value.trim()});mclose()}
 async function cgDel(id){await del("congelador",id);mclose()}
 function cgDay(id){const x=S.congelador.find(y=>y.id===id),o=$("#md");o.className="on";
- o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Añadir al menú</div><div class="mu">${esc(x.nombre)}</div><input type="date" id="gd" value="${wk>today()?wk:today()}" oninput="gdCheck()" aria-label="Día"><select id="gk" onchange="gdCheck()" aria-label="Comida o cena"><option>Comida</option><option>Cena</option></select><div class="mu" id="gw"></div><label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:6px 0"><input type="checkbox" id="gr" checked style="width:auto;margin:0"> Descontar 1 del congelador</label><button class="b" onclick="cgDaySave('${id}')">Añadir al menú</button><button class="b s" onclick="mclose()">Cancelar</button></div>`;gdCheck()}
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">Añadir al menú</div><div class="mu">${esc(x.nombre)}</div><input type="date" id="gd" value="${wk>today()?wk:today()}" oninput="gdCheck()" aria-label="Día"><select id="gk" onchange="gdCheck()" aria-label="Comida o cena"><option>Comida</option><option>Cena</option></select><div class="mu" id="gw"></div><label class="mu">Cantidad que sacas del congelador (0 = no descontar)</label><input id="gr" type="number" min="0" max="${esc(x.n)}" value="1" inputmode="numeric"><button class="b" onclick="cgDaySave('${id}')">Añadir al menú</button><button class="b s" onclick="mclose()">Cancelar</button></div>`;gdCheck()}
 function gdCheck(){const f=$("#gd").value,m=S.menu.find(y=>y.fecha===f&&y.tipo===$("#gk").value);$("#gw").textContent=m?`Ya hay «${m.plato}» en esa casilla: se sustituirá.`:(f?fmt(f):"")}
-async function cgDaySave(id){const x=S.congelador.find(y=>y.id===id),f=$("#gd").value,k=$("#gk").value;if(!f)return;const m=S.menu.find(y=>y.fecha===f&&y.tipo===k),dec=$("#gr").checked;
- await put("menu",{id:m&&m.id,fecha:f,tipo:k,plato:x.nombre,notas:"Del congelador",ing:[],fz:true});mclose();if(dec){const n=(+x.n||0)-1;if(n<=0)await del("congelador",id);else await put("congelador",{...x,n})}say(`Añadido: ${fmt(f)}, ${k}`)}
+async function cgDaySave(id){const x=S.congelador.find(y=>y.id===id),f=$("#gd").value,k=$("#gk").value;if(!f)return;const m=S.menu.find(y=>y.fecha===f&&y.tipo===k),dec=Math.max(0,parseInt($("#gr").value)||0);
+ await put("menu",{id:m&&m.id,fecha:f,tipo:k,plato:x.nombre,notas:"Del congelador",ing:[],fz:true});mclose();if(dec>0)await cgTake(id,dec,true);say(`Añadido: ${fmt(f)}, ${k}`)}
 
 /* ===== Prueba de IA y dictado por voz ===== */
 async function testAI(){const r=$("#air");try{localStorage.setItem("gm",$("#sk").value.trim());localStorage.setItem("gmodel",$("#gmo").value.trim())}catch(e){}
@@ -583,4 +583,25 @@ function voiceReview(L){const o=$("#md");o.className="on";o.innerHTML=`<div clas
 
 const isPz=x=>x&&(x.categoria==="Pizzas"||/pizza/i.test(x.plato||""));
 function fixFri(d){if(new Date(d.fecha+"T12:00:00").getDay()!==5||d.cena.libre||isPz(d.cena))return;const pw=prevWeek(),all=S.recetas.filter(r=>r.cat==="Pizzas"),pool=all.filter(r=>!pw.includes(r.nombre)),L=pool.length?pool:all;if(!L.length)return;const p=L[Math.floor(Math.random()*L.length)];d.cena={plato:p.nombre,categoria:"Pizzas",ingredientes:p.ing||[],nueva:false}}
+
+/* ===== Actualizar congelador tras enviar el menú ===== */
+let cgTmp={},cgPl=[];
+function cgAfter(pl){if(!S.congelador.length)return;cgTmp={};S.congelador.forEach(x=>{cgTmp[x.id]=+x.n||0});cgPl=pl||[];cgAfterDraw()}
+function cgAfterDraw(){const o=$("#md");o.className="on";const pl=cgPl.map(norm);
+ const rows=S.congelador.filter(x=>cgTmp[x.id]>0).map(x=>{const nx=norm(x.nombre),hit=pl.some(p=>p.includes(nx)||nx.includes(p));return `<div class="fr"><span>${esc(x.nombre)}${hit?' <span class="tag Comida">en el menú</span>':""}<br><small class="mu">${esc(x.tipo)}</small></span><span class="mini"><button class="chip" onclick="cgAd('${x.id}',-1)" aria-label="Menos">−</button><b style="min-width:24px;text-align:center">${cgTmp[x.id]}</b><button class="chip" onclick="cgAd('${x.id}',1)" aria-label="Más">+</button></span></div>`}).join("");
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">¿Qué has sacado del congelador?</div><p class="mu">Ajusta lo que queda tras este menú. Si bajas una unidad a 0, se quita.</p>${rows||'<p class="mu">El congelador está vacío.</p>'}<button class="b" onclick="mclose()">Listo</button><button class="b s" onclick="mclose();tab='cong';render()">Ir al congelador</button></div>`}
+async function cgAd(id,d){const x=S.congelador.find(y=>y.id===id);if(!x)return;const n=Math.max(0,(cgTmp[id]||0)+d);cgTmp[id]=n;cgAfterDraw();if(n===0)await del("congelador",id);else await put("congelador",{...x,n})}
+
+/* ===== Sacar del congelador: casilla manual, receta->día y tras enviar el menú ===== */
+const fzBlock=()=>S.congelador.length?`<label class="mu">¿Sacas algo del congelador? (opcional)</label><select id="fzs" onchange="fzPick()" aria-label="Sacar del congelador"><option value="">No saco nada</option>${S.congelador.map(x=>`<option value="${x.id}">${esc(x.nombre)} (hay ${esc(x.n)})</option>`).join("")}</select><div id="fzq" style="display:none"><label class="mu">Cantidad que sacas</label><input id="fzn" type="number" min="1" value="1" inputmode="numeric"></div>`:"";
+function fzPick(){const v=$("#fzs").value,q=$("#fzq");q.style.display=v?"block":"none";if(v){const x=S.congelador.find(y=>y.id===v);if(x){$("#fzn").max=x.n;if($("#mp")&&!$("#mp").value.trim()&&x.tipo!=="Ingrediente")$("#mp").value=x.nombre}}}
+const fzRead=()=>({id:($("#fzs")||{}).value||"",q:Math.max(1,parseInt(($("#fzn")||{}).value)||1)});
+async function cgTake(id,q,quiet){const x=S.congelador.find(y=>y.id===id);if(!x)return;const have=+x.n||0,tk=Math.min(q,have||q),n=have-tk;if(n<=0)await del("congelador",id);else await put("congelador",{...x,n});if(!quiet)say(`Sacado del congelador: ${x.nombre} × ${tk}`)}
+let cgTk={};
+function cgAfter(pl){if(!S.congelador.length)return;cgTk={};cgPl=pl||[];cgAfterDraw()}
+function cgAfterDraw(){const o=$("#md");o.className="on";const pl=cgPl.map(norm);
+ const rows=S.congelador.map(x=>{const nx=norm(x.nombre),hit=pl.some(p=>p.includes(nx)||nx.includes(p));return `<div class="fr"><span>${esc(x.nombre)}${hit?' <span class="tag Comida">en el menú</span>':""}<br><small class="mu">Hay ${esc(x.n)} · ${esc(x.tipo)}</small></span><span class="mini"><button class="chip" onclick="cgSk('${x.id}',-1)" aria-label="Menos">−</button><b style="min-width:24px;text-align:center">${cgTk[x.id]||0}</b><button class="chip" onclick="cgSk('${x.id}',1)" aria-label="Más">+</button></span></div>`}).join("");
+ o.innerHTML=`<div class="mc"><div class="f" style="font-size:20px">¿Sacas algo del congelador?</div><p class="mu">Pon la cantidad que sacas para este menú. Se descuenta al confirmar.</p>${rows}<button class="b" onclick="cgConfirm()">Confirmar</button><button class="b s" onclick="mclose()">No saco nada</button></div>`}
+function cgSk(id,d){const x=S.congelador.find(y=>y.id===id);if(!x)return;cgTk[id]=Math.max(0,Math.min(+x.n||0,(cgTk[id]||0)+d));cgAfterDraw()}
+async function cgConfirm(){const ids=Object.keys(cgTk).filter(k=>cgTk[k]>0),tk={...cgTk};mclose();for(const id of ids)await cgTake(id,tk[id],true);say(ids.length?"Congelador actualizado":"No se ha sacado nada")}
 </script></body></html>
